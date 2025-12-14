@@ -1,6 +1,6 @@
 # CrunchLabs Label Maker
 
-A modified version of Mark Rober's CrunchLabs Label Maker project. This Arduino-based label maker allows you to create custom labels by drawing text on tape using a pen controlled by stepper motors and a servo.
+A modified version of [Mark Rober's CrunchLabs](https://crunchlabs.refr.cc/friends/u/antonavramov?s=esp&t=cp) Label Maker project. This Arduino-based label maker allows you to create custom labels by drawing text on tape using a pen controlled by stepper motors and a servo.
 
 ## Modifications
 
@@ -204,7 +204,7 @@ This modified version is based on the original CrunchLabs Label Maker code and i
 
 ## Credits
 
-- **Original Project**: Mark Rober's CrunchLabs Label Maker
+- **Original Project**: [Mark Rober's CrunchLabs](https://crunchlabs.refr.cc/friends/u/antonavramov?s=esp&t=cp) Label Maker
 - **Original Code**: Copyright (c) 2025 Crunchlabs LLC
 - **Modifications**: Enhanced with dual-row support and improved user interface
 
