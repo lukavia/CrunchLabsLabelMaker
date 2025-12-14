@@ -62,6 +62,7 @@ int y_scale = 230;//for example, if this is 230(default), then 230(scale) x 4(ma
 int scale = x_scale;
 int space = x_scale * 5; //space size between letters (as steps) based on X scale in order to match letter width
 //multiplied by 5 because the scale variables are multiplied against coordinates later, while space is just fed in directly, so it needs to be scaled up by 5 to match
+int row_spacing = y_scale * 4 * 3.5; //vertical spacing between rows (based on character height * 3.5 y-scale factor)
 
 
 // Joystick setup
@@ -72,7 +73,9 @@ const int joystickButtonThreshold = 200;  // Adjust this threshold value based o
 // Menu parameters
 const char alphabet[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?,.#@"; //alphabet menu
 int alphabetSize = sizeof(alphabet) - 1;
-String text;  // Store the label text
+String textRow1;  // Store the label text for first row
+String textRow2;  // Store the label text for second row
+int currentRow = 0;  // Track which row is being edited (0 = row 1, 1 = row 2)
 
 int currentCharacter = 0; //keep track of which character is currently displayed under the cursor
 int cursorPosition = 0; //keeps track of the cursor position (left to right) on the screen
@@ -119,6 +122,7 @@ bool joyDown;
 bool joyLeft;
 bool joyRight;
 int button1State;
+bool button1Handled = false;  // Track if button press has been handled in current cycle
 int joystickX;
 int joystickY;
 #pragma endregion PINS AND PARAMS
@@ -248,6 +252,11 @@ void loop() {
 
   button1.loop();
   button1State = button1.getState();
+  
+  // Reset button handled flag when button is released
+  if (button1.isReleased()) {
+    button1Handled = false;
+  }
 
   joystickX = analogRead(joystickXPin);
   joystickY = analogRead(joystickYPin);
@@ -287,27 +296,41 @@ void loop() {
       break;
 
     case Editing:  //in the editing mode, joystick directional input adds and removes characters from the string, while up and down changes characters
-      //pressing the joystick button will switch the device into the Print Confirmation mode
+      //first joystick click moves to second row, second click goes to print confirmation
 
       // Editing mode
       if (prevState != Editing) {
         lcd.clear();
+        currentRow = 0;  // Reset to first row when entering editing mode
         prevState = Editing;
       }
-      //lcd.clear();
+      
+      // Display both rows on LCD
       lcd.setCursor(0, 0);
       lcd.print(":");
       lcd.setCursor(1, 0);
-      lcd.print(text);
+      // Truncate to fit on screen (16 chars max per row, accounting for ":")
+      if (textRow1.length() > 15) {
+        lcd.print(textRow1.substring(0, 15));
+      } else {
+        lcd.print(textRow1);
+      }
+      
+      lcd.setCursor(0, 1);
+      lcd.print(":");  // Show ":" at beginning of second row too
+      lcd.setCursor(1, 1);
+      // Truncate to fit on screen (16 chars max per row, accounting for ":")
+      if (textRow2.length() > 15) {
+        lcd.print(textRow2.substring(0, 15));
+      } else {
+        lcd.print(textRow2);
+      }
 
       // Check if the joystick is moved up (previous letter) or down (next letter)
-
       if (joyUp) {  //UP (previous character)
         Serial.println(currentCharacter);
         if (currentCharacter > 0) {
           currentCharacter--;
-          lcd.print(alphabet[currentCharacter]);
-          //Serial.println("Character UP");
         }
         delay(250);  // Delay to prevent rapid scrolling
 
@@ -315,11 +338,16 @@ void loop() {
         Serial.println(currentCharacter);
         if (currentCharacter < (alphabetSize - 1)) {
           currentCharacter++;  //increment character value
-          lcd.print(alphabet[currentCharacter]);
-          //Serial.println("Character DOWN");
         }
         delay(250);  // Delay to prevent rapid scrolling
       } else {
+        // Display current character being selected (blinking cursor)
+        String* currentText = (currentRow == 0) ? &textRow1 : &textRow2;
+        // Cursor position is length of current text + 1 (accounting for ":" at position 0 on both rows)
+        int cursorCol = currentText->length() + 1;
+        if (cursorCol > 16) cursorCol = 16;  // Don't exceed screen width
+        
+        lcd.setCursor(cursorCol, currentRow);
         if (millis() % 600 < 450) {
           lcd.print(alphabet[currentCharacter]);
         } else {
@@ -330,36 +358,71 @@ void loop() {
       // Check if the joystick is moved left (backspace) or right (add space)
       if (joyLeft) {
         // LEFT (backspace)
-        if (text.length() > 0) {
-          text.remove(text.length() - 1);
+        String* currentText = (currentRow == 0) ? &textRow1 : &textRow2;
+        if (currentText->length() > 0) {
+          currentText->remove(currentText->length() - 1);
+          // Redraw display
           lcd.setCursor(0, 0);
-          lcd.print(MENU_CLEAR);  //clear and reprint the string so characters dont hang
+          lcd.print(":                ");
           lcd.setCursor(1, 0);
-          lcd.print(text);
+          if (textRow1.length() > 15) {
+            lcd.print(textRow1.substring(0, 15));
+          } else {
+            lcd.print(textRow1);
+          }
+          lcd.setCursor(0, 1);
+          lcd.print(":                ");
+          lcd.setCursor(1, 1);
+          if (textRow2.length() > 15) {
+            lcd.print(textRow2.substring(0, 15));
+          } else {
+            lcd.print(textRow2);
+          }
         }
         delay(250);  // Delay to prevent rapid multiple presses
 
       } else if (joyRight) {  //RIGHT adds a space or character to the label
+        String* currentText = (currentRow == 0) ? &textRow1 : &textRow2;
         if (currentCharacter == 0) {
-          text += ' ';  //add a space if the character is _
+          *currentText += ' ';  //add a space if the character is _
         } else {
-          text += alphabet[currentCharacter];  //add the current character to the text
+          *currentText += alphabet[currentCharacter];  //add the current character to the text
           currentCharacter = 0;
+        }
+        // Redraw display to show updated text
+        lcd.setCursor(0, 0);
+        lcd.print(":                ");
+        lcd.setCursor(1, 0);
+        if (textRow1.length() > 15) {
+          lcd.print(textRow1.substring(0, 15));
+        } else {
+          lcd.print(textRow1);
+        }
+        lcd.setCursor(0, 1);
+        lcd.print(":                ");
+        lcd.setCursor(1, 1);
+        if (textRow2.length() > 15) {
+          lcd.print(textRow2.substring(0, 15));
+        } else {
+          lcd.print(textRow2);
         }
         delay(250);  // Delay to prevent rapid multiple presses
       }
 
-      if (button1.isPressed()) {
-        // Single click: Add character and reset alphabet scroll
-        if (currentCharacter == 0) {
-          text += ' ';  //add a space if the character is _
+      // Check for button press - only handle once per press
+      if (button1.isPressed() && !button1Handled) {
+        button1Handled = true;  // Mark as handled to prevent multiple triggers
+        if (currentRow == 0) {
+          // First click: move to second row
+          currentRow = 1;
+          currentCharacter = 0;  // Reset character selection
+          delay(200);  // Debounce delay
         } else {
-          text += alphabet[currentCharacter];  //add the current character to the text
-          currentCharacter = 0;                // reset for the next character
+          // Second click: go to print confirmation
+          lcd.clear();
+          currentState = PrintConfirmation;
+          prevState = Editing;
         }
-        lcd.clear();
-        currentState = PrintConfirmation;
-        prevState = Editing;
       }
 
       break;
@@ -422,13 +485,19 @@ void loop() {
       }
 
       // ----------------------------------------------- plot text
-      plotText(text, xpos, ypos);
+      // Ensure we start from the correct position
+      xpos = 0;
+      ypos = 0;
+      
+      plotText(textRow1, textRow2, xpos, ypos);
 
+      // Move to new line after printing
       line(xpos + space, 0, 0);  // move to new line
       xpos = 0;
       ypos = 0;
 
-      text = "";
+      textRow1 = "";
+      textRow2 = "";
       yStepper.step(-2250);
       releaseMotors();
       lcd.clear();
@@ -444,9 +513,50 @@ void loop() {
               // FUNCTIONS  //
 //////////////////////////////////////////////////
 #pragma region FUNCTIONS
-void plotText(String &str, int x, int y) {  //takes in our label as a string, and breaks it up by character for plotting
+void plotText(String &row1, String &row2, int x, int y) {  //takes in two row strings and plots them
+  Serial.println("plotText called");
+  Serial.print("Row1: ");
+  Serial.println(row1);
+  Serial.print("Row2: ");
+  Serial.println(row2);
+  
+  // Ensure we start from the correct position
+  xpos = x;
+  ypos = y;
+  
+  // Draw first row if it has content
+  if (row1.length() > 0) {
+    Serial.println("Plotting row1");
+    plotTextRow(row1, x, y);
+  }
+  
+  // Draw second row if it has content
+  if (row2.length() > 0) {
+    Serial.println("Plotting row2");
+    // Calculate second row Y position (down by row_spacing)
+    int row2_y = y - row_spacing;
+    
+    // If row1 was drawn, move to row2 position, otherwise start at row2 position
+    if (row1.length() > 0) {
+      // Move back to start X position and down to row2 Y position without drawing
+      line(x, row2_y, 0);
+    } else {
+      // If row1 is empty, just set position to row2 start
+      xpos = x;
+      ypos = row2_y;
+    }
+    
+    // Draw second row
+    plotTextRow(row2, x, row2_y);
+  }
+  
+  Serial.println("plotText complete");
+  releaseMotors();
+}
+
+void plotTextRow(String &str, int x, int y) {  //helper function to plot a single row of text
   int pos = 0;
-  Serial.println("plot string");
+  Serial.println("plot row");
   Serial.println(str);
   for (int i = 0; i < str.length(); i++) {  //for each letter in the string (expressed as "while i is less than string length")
     char c = char(str.charAt(i));           //store the next character to plot on it's own
@@ -461,8 +571,6 @@ void plotText(String &str, int x, int y) {  //takes in our label as a string, an
       }
     }
   }
-  Serial.println();
-  releaseMotors();
 }
 
 void plotCharacter(char c, int x, int y) {  //this receives info from plotText for which character to plot,
